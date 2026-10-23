@@ -5,6 +5,15 @@ on:
     # 毎日 00:00 UTC = 日本時間 (JST) 朝 09:00
     - cron: '0 0 * * *'
   workflow_dispatch:
+    inputs:
+      force_next:
+        description: '同日送信済みでも次の1話を繰り上げ送信する (true/false)'
+        required: false
+        default: 'true'
+      episode_id:
+        description: '特定の記録番号を指定する場合（例: 006）'
+        required: false
+        default: ''
 
 permissions:
   contents: write
@@ -35,7 +44,17 @@ jobs:
           TIKTOK_REFRESH_TOKEN: ${{ secrets.TIKTOK_REFRESH_TOKEN }}
           GH_PAT: ${{ secrets.GH_PAT }}
           TIKTOK_VERIFIED_IMAGE_BASE_URL: https://miracle-tamechan0429-ops.github.io/quotes3000/posts
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_FORCE: ${{ github.event.inputs.force_next }}
+          INPUT_EPISODE: ${{ github.event.inputs.episode_id }}
         run: |
           git config user.name "Quotes3000 Cloud Server"
           git config user.email "bot@quotes3000.local"
-          python3 cloud_send_daily.py --git-sync
+          ARGS="--git-sync"
+          if [ "$EVENT_NAME" = "workflow_dispatch" ] && [ "$INPUT_FORCE" = "true" ]; then
+            ARGS="$ARGS --force"
+          fi
+          if [ -n "$INPUT_EPISODE" ]; then
+            ARGS="$ARGS --episode $INPUT_EPISODE"
+          fi
+          python3 cloud_send_daily.py $ARGS

@@ -249,10 +249,14 @@ function copyText(text, btn, msg) {{
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--force", action="store_true", help="同日送信済みでも強制送信する")
+    parser.add_argument("--force", action="store_true", help="同日送信済みでも強制送信（繰り上げ送信）する")
+    parser.add_argument("--episode", type=str, default="", help="特定の記録番号（例: 006）を指定して即時送信し繰り上げる")
     parser.add_argument("--git-sync", action="store_true", help="実行前後に git pull / git push を行う")
     parser.add_argument("--after-9am", action="store_true", help="日本時間9:00以降のみ実行する（常駐デーモン用）")
     args = parser.parse_args()
+
+    if args.episode:
+        args.force = True
 
     now_jst = datetime.datetime.now(JST)
     if args.after_9am and not args.force and now_jst.hour < 9:
@@ -272,9 +276,13 @@ def main() -> None:
                 sys.exit(0)
 
     episodes = json.loads(EPISODES_PATH.read_text(encoding="utf-8"))
-    next_ep = next((e for e in episodes if e.get("status") == "ready"), None)
+    if args.episode:
+        ep_norm = args.episode.zfill(3)
+        next_ep = next((e for e in episodes if e.get("id") == ep_norm), None)
+    else:
+        next_ep = next((e for e in episodes if e.get("status") == "ready"), None)
     if not next_ep:
-        print("[INFO] status='ready' の未送信エピソードがありません。")
+        print("[INFO] 対象のエピソードが見つかりません。")
         sys.exit(0)
 
     creds = load_credentials()
