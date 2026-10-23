@@ -85,6 +85,38 @@ def refresh_access_token(creds: dict) -> str:
         raw["tiktok_refresh_token"] = new_refresh
         CONFIG_PATH.write_text(json.dumps(raw, ensure_ascii=False, indent=2), encoding="utf-8")
 
+    # GitHub Actions 上で動いている場合、最新のトークンを GitHub Secrets にも自動保存（半永久稼働用）
+    gh_pat = os.environ.get("GH_PAT")
+    if gh_pat:
+        try:
+            import base64
+            from nacl import encoding, public
+            repo = "miracle-tamechan0429-ops/quotes3000"
+            pk_req = urllib.request.Request(
+                f"https://api.github.com/repos/{repo}/actions/secrets/public-key",
+                headers={"Authorization": f"token {gh_pat}", "Accept": "application/vnd.github+json"},
+            )
+            with urllib.request.urlopen(pk_req, timeout=15) as r:
+                pk_data = json.loads(r.read().decode("utf-8"))
+            sealed_box = public.SealedBox(
+                public.PublicKey(pk_data["key"].encode("utf-8"), encoding.Base64Encoder())
+            )
+            for s_name, s_val in [("TIKTOK_ACCESS_TOKEN", new_access), ("TIKTOK_REFRESH_TOKEN", new_refresh)]:
+                enc_val = base64.b64encode(sealed_box.encrypt(s_val.encode("utf-8"))).decode("utf-8")
+                put_req = urllib.request.Request(
+                    f"https://api.github.com/repos/{repo}/actions/secrets/{s_name}",
+                    data=json.dumps({"encrypted_value": enc_val, "key_id": pk_data["key_id"]}).encode("utf-8"),
+                    headers={
+                        "Authorization": f"token {gh_pat}",
+                        "Accept": "application/vnd.github+json",
+                        "Content-Type": "application/json",
+                    },
+                    method="PUT",
+                )
+                urllib.request.urlopen(put_req, timeout=15).close()
+        except Exception as e:
+            print(f"[WARN] Could not self-update GitHub Secrets: {e}")
+
     return new_access
 
 

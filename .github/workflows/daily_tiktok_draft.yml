@@ -1,0 +1,41 @@
+name: Daily 9AM TikTok Draft Sender
+
+on:
+  schedule:
+    # 毎日 00:00 UTC = 日本時間 (JST) 朝 09:00
+    - cron: '0 0 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  send-draft:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GH_PAT || github.token }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install PyNaCl for automatic token rotation
+        run: pip install pynacl
+
+      - name: Send Next Episode to TikTok Inbox & Update Mobile Copy Dashboard
+        env:
+          TIKTOK_CLIENT_KEY: ${{ secrets.TIKTOK_CLIENT_KEY }}
+          TIKTOK_CLIENT_SECRET: ${{ secrets.TIKTOK_CLIENT_SECRET }}
+          TIKTOK_ACCESS_TOKEN: ${{ secrets.TIKTOK_ACCESS_TOKEN }}
+          TIKTOK_REFRESH_TOKEN: ${{ secrets.TIKTOK_REFRESH_TOKEN }}
+          GH_PAT: ${{ secrets.GH_PAT }}
+          TIKTOK_VERIFIED_IMAGE_BASE_URL: https://miracle-tamechan0429-ops.github.io/quotes3000/posts
+        run: |
+          git config user.name "Quotes3000 Cloud Server"
+          git config user.email "bot@quotes3000.local"
+          python3 cloud_send_daily.py --git-sync
