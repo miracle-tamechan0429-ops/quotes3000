@@ -1,21 +1,20 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-TikTok『1000年後の名言』 5枚スライド自動生成エンジン (v7 スターウォーズ世界観 × 1枚目超特大タイトル看板型)
-- 1080×1920px (2倍オーバーサンプリング 2160×3840 描画 → LANCZOS縮小)
-- TikTokフォトモード実機表示（3:4領域 Y=240〜1680）に完全最適化
-- 【v7 大刷新ポイント】：
-  1. 1枚目のど真ん中に超特大（86px・極太黄金）で『1000年後に / 生まれる名言』の看板ロゴを配置し、
-     0.3秒で「何の企画か」が目に飛び込む圧倒的フックを実現！
-     その直下に2行（13〜15文字×2行）の刺さる副題だけを添え、読むストレスゼロで2枚目へ誘導。
-  2. 2枚目・3枚目をスターウォーズのオープニング・テロップのように「3〜4行の短文・特大58px」に凝縮。
-  3. 4枚目は導入文を3枚目へ移し、壮大なスターウォーズ風背景のど真ん中に「超特大72pxの黄金名言」だけを堂々と配置！
+TikTok『1000年後の名言』 5枚スライド自動生成エンジン (v8 脱テンプレ・1枚目ダイレクトSF衝撃フック×極限短文型)
+- 1080×1920px (2倍オーバーサンプリング 2160×3840 描画 → LANCZOS縮小 + UnsharpMask)
+- 【v8 再生数V字回復のための抜本改革】：
+  1. 1枚目中央の毎回同じ『1000年後に生まれる名言』固定看板を廃止（既視感による0.2秒スワイプ離脱を根絶）。
+     代わりに1枚目中央に「その話固有の衝撃的なSF異常設定（3行・特大70px）」をダイレクトに配置！
+  2. アルゴリズム減点＆業者感の原因になっていた赤文字CTA（［スワイプして記録を見る→］［保存してください］［コメント欄で教えて→］）
+     および毎回90%台の作られたパーセンテージ数字を完全撤廃。
+  3. 2枚目・3枚目を「3〜4行の超短文（62px）」に削ぎ落とし、3枚目で結論をネタバレせず4枚目の名言へ引っ張る構成に刷新。
+  4. 5枚目も詰め込み箇条書きを廃止し、余韻のある問いかけ＋①②のシンプルな2択のみに洗練。
 """
 
 import argparse
 import json
 import os
-import random
 from pathlib import Path
 from PIL import Image, ImageDraw, ImageEnhance, ImageFilter, ImageFont
 
@@ -27,12 +26,11 @@ OUT_W, OUT_H = 1080, 1920
 SCALE = 2
 W, H = OUT_W * SCALE, OUT_H * SCALE
 
-COLOR_WHITE = (255, 255, 255, 255)        # パキッとした純白シネマホワイト
-COLOR_GRAY_WHITE = (240, 238, 232, 255)   # サブテキスト用の高コントラストシルバーホワイト
-COLOR_GOLD_TOP = (255, 246, 175, 255)     # シャープなハイライト・シャンパンゴールド
-COLOR_GOLD_MID = (255, 200, 62, 255)      # 力強い純金アンバーゴールド
-COLOR_GOLD_BOT = (212, 138, 20, 255)      # 引き締まったディープゴールド
-COLOR_RED = (255, 88, 78, 255)            # 視認性の高いシネマレッド
+COLOR_WHITE = (255, 255, 255, 255)
+COLOR_GRAY_WHITE = (236, 234, 228, 255)
+COLOR_GOLD_TOP = (255, 246, 175, 255)
+COLOR_GOLD_MID = (255, 200, 62, 255)
+COLOR_GOLD_BOT = (212, 138, 20, 255)
 
 
 def load_mincho_font(size_px: int, bold: bool = True) -> ImageFont.FreeTypeFont:
@@ -56,7 +54,9 @@ def optical_offset_px(text: str, font: ImageFont.FreeTypeFont) -> int:
     return offset
 
 
-def fit_uniform_font_to_width(lines: list[str], base_size_px: int, max_width_px: int, bold: bool = True, bold_stroke: int = 1) -> ImageFont.FreeTypeFont:
+def fit_uniform_font_to_width(
+    lines: list[str], base_size_px: int, max_width_px: int, bold: bool = True, bold_stroke: int = 1
+) -> ImageFont.FreeTypeFont:
     dummy = ImageDraw.Draw(Image.new("RGBA", (10, 10)))
     size = base_size_px
     clean_lines = [l for l in lines if l.strip()]
@@ -65,7 +65,13 @@ def fit_uniform_font_to_width(lines: list[str], base_size_px: int, max_width_px:
     while size > 32:
         font = load_mincho_font(size, bold=bold)
         max_tw = max(
-            ((dummy.textbbox((0, 0), line, font=font, stroke_width=bold_stroke)[2] - dummy.textbbox((0, 0), line, font=font, stroke_width=bold_stroke)[0]) // SCALE)
+            (
+                (
+                    dummy.textbbox((0, 0), line, font=font, stroke_width=bold_stroke)[2]
+                    - dummy.textbbox((0, 0), line, font=font, stroke_width=bold_stroke)[0]
+                )
+                // SCALE
+            )
             for line in clean_lines
         )
         if max_tw <= max_width_px:
@@ -93,10 +99,6 @@ def generate_procedural_scifi_bg(ep_id: str, slide_num: int) -> Image.Image:
 
 
 def prepare_slide_background(base_bg_path: Path | None, ep_id: str, slide_num: int) -> Image.Image:
-    """
-    スターウォーズ風の壮大な背景（夕陽・星雲・古代神殿の光）の色彩を活かしつつ、
-    文字が100%くっきり読めるシネマグラデーションを重ねる。
-    """
     if base_bg_path and base_bg_path.exists():
         src = Image.open(base_bg_path).convert("RGB")
         sw, sh = src.size
@@ -124,9 +126,8 @@ def prepare_slide_background(base_bg_path: Path | None, ep_id: str, slide_num: i
     else:
         bg = generate_procedural_scifi_bg(ep_id, slide_num)
 
-    # スターウォーズ風の黄金の夕陽・星雲の豊かな色彩を残す（彩度を落とさない）
-    bg = ImageEnhance.Color(bg).enhance(1.04)
-    brightness_factor = 0.84 if slide_num == 4 else 0.90
+    bg = ImageEnhance.Color(bg).enhance(1.05)
+    brightness_factor = 0.82 if slide_num == 4 else 0.88
     bg = ImageEnhance.Brightness(bg).enhance(brightness_factor)
     bg = ImageEnhance.Contrast(bg).enhance(1.08)
 
@@ -134,16 +135,16 @@ def prepare_slide_background(base_bg_path: Path | None, ep_id: str, slide_num: i
     odraw = ImageDraw.Draw(overlay)
     for y in range(OUT_H):
         alpha = 0
-        if y < 680:
-            progress = 1.0 - (y / 680.0)
-            alpha = int((progress ** 1.2) * 145)
-        if 520 <= y < 1480:
-            dist = abs(y - 960) / 480.0
-            max_a = 120 if slide_num in (1, 4) else 105
+        if y < 650:
+            progress = 1.0 - (y / 650.0)
+            alpha = int((progress ** 1.2) * 140)
+        if 500 <= y < 1450:
+            dist = abs(y - 940) / 480.0
+            max_a = 125 if slide_num in (1, 4) else 110
             mid_a = int(max(0.0, 1.0 - (dist ** 1.4)) * max_a)
             alpha = max(alpha, mid_a)
-        elif y >= 1480:
-            progress = min(1.0, (y - 1480) / 280.0)
+        elif y >= 1450:
+            progress = min(1.0, (y - 1450) / 300.0)
             alpha = int(progress * 175)
         if alpha > 0:
             odraw.line([(0, y), (OUT_W, y)], fill=(6, 8, 12, alpha))
@@ -175,7 +176,7 @@ def draw_centered_text_with_shadow(
     th = bbox[3] - bbox[1]
     x = cx - tw // 2
 
-    # 1. タイトで引き締まったドロップシャドウ（滲みゼロ・立体感のみ付与）
+    # 1. タイトで引き締まったドロップシャドウ（滲みゼロ）
     shadow_layer = Image.new("RGBA", canvas.size, (0, 0, 0, 0))
     sdraw = ImageDraw.Draw(shadow_layer)
     sdraw.text(
@@ -189,7 +190,7 @@ def draw_centered_text_with_shadow(
     shadow_layer = shadow_layer.filter(ImageFilter.GaussianBlur(radius=1.5 * SCALE))
     canvas.alpha_composite(shadow_layer)
 
-    # 2. パキッとした漆黒のソリッド外縁取り（ブラーなし・エッジ100%くっきり）
+    # 2. 漆黒のソリッド外縁取り
     draw.text(
         (x, y),
         text,
@@ -199,7 +200,7 @@ def draw_centered_text_with_shadow(
         stroke_fill=(0, 0, 0, 255),
     )
 
-    # 3. 本体描画（グロー滲みなし・ベクターエッジそのまま）
+    # 3. 本体描画
     if is_full_gold:
         _draw_gold_text(canvas, x, y, text, font, bold_stroke=bold_stroke)
     elif gold_substring and gold_substring in text:
@@ -222,7 +223,6 @@ def _draw_gold_substring(
     fill: tuple[int, int, int, int],
     bold_stroke: int = 1,
 ) -> None:
-    """pre + match を同一座標 (x, y) から描画し、pre 領域をマスク除外することでカーニングずれと滲みをゼロにする"""
     if not pre:
         _draw_gold_text(canvas, x, y, match, font, bold_stroke=bold_stroke)
         return
@@ -231,8 +231,6 @@ def _draw_gold_substring(
     mask = Image.new("L", canvas.size, 0)
     mdraw = ImageDraw.Draw(mask)
     mdraw.text((x, y), full_sub, font=font, fill=255, stroke_width=bold_stroke, stroke_fill=255)
-
-    # pre のグリフ領域を黒(0)で消去して match のみ残す
     mdraw.text((x, y), pre, font=font, fill=0, stroke_width=bold_stroke + 1, stroke_fill=0)
 
     bbox = mdraw.textbbox((x, y), full_sub, font=font, stroke_width=bold_stroke)
@@ -256,7 +254,6 @@ def _draw_gold_substring(
         gpx.line([(bbox[0] - 8, py), (bbox[2] + 8, py)], fill=(r, g, b, 255))
 
     canvas.paste(grad, (0, 0), mask)
-    # 境界の白文字 pre を再描画してくっきり仕上げる
     draw = ImageDraw.Draw(canvas)
     draw.text((x, y), pre, font=font, fill=fill, stroke_width=bold_stroke, stroke_fill=fill)
 
@@ -296,22 +293,21 @@ def _draw_gold_text(
 
 
 def finalize_slide_image(canvas: Image.Image) -> Image.Image:
-    """2倍キャンバスから1080x1920へLANCZOS縮小後、アンシャープマスクで文字エッジをパキッと際立たせる"""
     img = canvas.resize((OUT_W, OUT_H), Image.Resampling.LANCZOS).convert("RGB")
     return img.filter(ImageFilter.UnsharpMask(radius=1.0, percent=115, threshold=2))
 
 
-def draw_common_header(canvas: Image.Image, center_x_px: int = 525) -> None:
-    font_hdr = load_mincho_font(42, bold=True)
+def draw_common_header(canvas: Image.Image, ep_id: str, center_x_px: int = 525) -> None:
+    font_hdr = load_mincho_font(38, bold=True)
     draw_centered_text_with_shadow(
-        canvas, 450, "1000年後に生まれる名言", font_hdr, COLOR_WHITE, center_x_px=center_x_px, bold_stroke=1
+        canvas, 465, f"1000年後に生まれる名言 ── 記録 {ep_id}", font_hdr, COLOR_GRAY_WHITE, center_x_px=center_x_px, bold_stroke=1
     )
     draw = ImageDraw.Draw(canvas)
-    line_y = 522 * SCALE
+    line_y = 532 * SCALE
     cx = center_x_px * SCALE
-    half_w = 275 * SCALE
+    half_w = 310 * SCALE
     draw.line([(cx - half_w, line_y + 2), (cx + half_w, line_y + 2)], fill=(0, 0, 0, 235), width=4 * SCALE)
-    draw.line([(cx - half_w, line_y), (cx + half_w, line_y)], fill=(242, 208, 145, 255), width=3 * SCALE)
+    draw.line([(cx - half_w, line_y), (cx + half_w, line_y)], fill=(242, 208, 145, 255), width=2 * SCALE)
 
 
 def draw_gold_rule(canvas: Image.Image, y_px: int, half_w_px: int = 360, center_x_px: int = 525) -> None:
@@ -330,136 +326,123 @@ def render_episode(episode: dict, out_dir: Path, base_bg_path: Path | None = Non
 
     cx = 525
     max_w = 870
-    font_badge = load_mincho_font(42, bold=True)
-    font_cta = load_mincho_font(44, bold=True)
 
     # =========================================================================
-    # Slide 1: 『1000年後に生まれる名言』超特大黄金タイトル看板 ＋ 2行テーマ副題
+    # Slide 1: 既視感ゼロ！その話固有の「SF衝撃フック（3〜4行・超特大72px）」をど真ん中に配置
     # =========================================================================
     c1 = prepare_slide_background(base_bg_path, ep_id, 1)
+    font_top = load_mincho_font(40, bold=True)
     draw_centered_text_with_shadow(
-        c1, 475, f"【 記録番号：{ep_id} 】", font_badge, COLOR_GRAY_WHITE, center_x_px=cx, bold_stroke=1
+        c1, 495, f"【 記録番号：{ep_id} 】", font_top, COLOR_GRAY_WHITE, center_x_px=cx, bold_stroke=1
     )
 
-    # スターウォーズのタイトルロゴのように、画面中央（Y=560〜865）に超特大黄金タイトルを配置
-    draw_gold_rule(c1, 560, half_w_px=370, center_x_px=cx)
-    font_hero = load_mincho_font(88, bold=True)
-    draw_centered_text_with_shadow(
-        c1, 590, "1000年後に", font_hero, COLOR_WHITE, center_x_px=cx, is_full_gold=True, bold_stroke=2
-    )
-    draw_centered_text_with_shadow(
-        c1, 715, "生まれる名言", font_hero, COLOR_WHITE, center_x_px=cx, is_full_gold=True, bold_stroke=2
-    )
-    draw_gold_rule(c1, 845, half_w_px=370, center_x_px=cx)
-
-    # 直下に0.5秒で読める刺さるテーマ副題（2〜3行・特大58px）
-    s1_lines = episode["slide1"].get("cover_hook") or episode["slide1"]["lines"]
+    s1_lines = episode["slide1"]["lines"]
     gold_kw1 = episode["slide1"].get("gold_keyword")
-    f_s1 = fit_uniform_font_to_width(s1_lines, 58, max_w, bold=True, bold_stroke=1)
-    y = 925 if len(s1_lines) <= 2 else 895
-    step_y = 108 if len(s1_lines) <= 2 else 94
+    f_s1 = fit_uniform_font_to_width(s1_lines, 72, max_w, bold=True, bold_stroke=2)
+
+    total_lines = len(s1_lines)
+    step_y = 132 if total_lines <= 3 else 116
+    start_y = 700 if total_lines <= 3 else 650
+
+    draw_gold_rule(c1, start_y - 55, half_w_px=370, center_x_px=cx)
+    y = start_y
     for line in s1_lines:
         draw_centered_text_with_shadow(
-            c1, y, line, f_s1, COLOR_WHITE, center_x_px=cx, gold_substring=gold_kw1, bold_stroke=1
+            c1, y, line, f_s1, COLOR_WHITE, center_x_px=cx, gold_substring=gold_kw1, bold_stroke=2
         )
         y += step_y
+    draw_gold_rule(c1, y + 20, half_w_px=370, center_x_px=cx)
 
-    sub_hook = episode["slide1"].get("sub_hook")
-    if sub_hook:
-        f_sub = fit_uniform_font_to_width([sub_hook], 42, max_w, bold=True, bold_stroke=1)
-        draw_centered_text_with_shadow(c1, 1185, sub_hook, f_sub, COLOR_GRAY_WHITE, center_x_px=cx, is_full_gold=True, bold_stroke=1)
+    font_brand = load_mincho_font(40, bold=True)
+    draw_centered_text_with_shadow(
+        c1, y + 85, "── 1000年後に生まれる名言 ──", font_brand, COLOR_GRAY_WHITE, center_x_px=cx, is_full_gold=True, bold_stroke=1
+    )
 
-    draw_centered_text_with_shadow(c1, 1320, "［ スワイプして記録を見る → ］", font_cta, COLOR_RED, center_x_px=cx, bold_stroke=1)
     p1 = out_dir / "01.png"
-    img1 = finalize_slide_image(c1)
-    img1.save(p1, quality=98)
+    finalize_slide_image(c1).save(p1, quality=98)
     saved_paths.append(p1)
 
     # =========================================================================
-    # Slide 2: 未来の記録（短く力強い58px）
+    # Slide 2: 西暦3000年の異常設定（3〜4行・特大62px・1秒で読める）
     # =========================================================================
     c2 = prepare_slide_background(base_bg_path, ep_id, 2)
-    draw_common_header(c2, cx)
+    draw_common_header(c2, ep_id, cx)
     s2_lines = episode["slide2"]["lines"]
     gold_kw2 = episode["slide2"].get("gold_keyword")
-    f_s2 = fit_uniform_font_to_width(s2_lines, 58, max_w, bold=True, bold_stroke=1)
-    y = 660 if len(s2_lines) <= 4 else 635
-    for idx, line in enumerate(s2_lines):
+    f_s2 = fit_uniform_font_to_width(s2_lines, 62, max_w, bold=True, bold_stroke=1)
+    y = 700 if len(s2_lines) <= 3 else 660
+    step2 = 140 if len(s2_lines) <= 3 else 126
+    for line in s2_lines:
         draw_centered_text_with_shadow(
             c2, y, line, f_s2, COLOR_WHITE, center_x_px=cx, gold_substring=gold_kw2, bold_stroke=1
         )
-        y += 155 if idx == len(s2_lines) - 2 else 120
+        y += step2
     p2 = out_dir / "02.png"
-    img2 = finalize_slide_image(c2)
-    img2.save(p2, quality=98)
+    finalize_slide_image(c2).save(p2, quality=98)
     saved_paths.append(p2)
 
     # =========================================================================
-    # Slide 3: 喪失の理由 ＋ 4枚目の名言へのブリッジ
+    # Slide 3: 逆転の異変（ネタバレせず4枚目の名言へ引き込む3〜4行・特大62px）
     # =========================================================================
     c3 = prepare_slide_background(base_bg_path, ep_id, 3)
-    draw_common_header(c3, cx)
+    draw_common_header(c3, ep_id, cx)
     s3_lines = episode["slide3"]["lines"]
     gold_kw3 = episode["slide3"].get("gold_keyword")
-    f_s3 = fit_uniform_font_to_width(s3_lines, 56, max_w, bold=True, bold_stroke=1)
-    y = 640
-    for idx, line in enumerate(s3_lines):
+    f_s3 = fit_uniform_font_to_width(s3_lines, 62, max_w, bold=True, bold_stroke=1)
+    y = 700 if len(s3_lines) <= 3 else 660
+    step3 = 140 if len(s3_lines) <= 3 else 126
+    for line in s3_lines:
         draw_centered_text_with_shadow(
             c3, y, line, f_s3, COLOR_WHITE, center_x_px=cx, gold_substring=gold_kw3, bold_stroke=1
         )
-        y += 145 if idx == 0 else 118
+        y += step3
     p3 = out_dir / "03.png"
     finalize_slide_image(c3).save(p3, quality=98)
     saved_paths.append(p3)
 
     # =========================================================================
-    # Slide 4: 【主役】1000年後に生まれた黄金の名言（超特大72px）
+    # Slide 4: 【主役】1000年後に生まれた黄金の名言（超特大74px・宣伝文字ゼロの聖域）
     # =========================================================================
     c4 = prepare_slide_background(base_bg_path, ep_id, 4)
-    draw_common_header(c4, cx)
-    y = 600
+    draw_common_header(c4, ep_id, cx)
     s4_intro = episode["slide4"]["intro_lines"]
     f_intro = fit_uniform_font_to_width(s4_intro, 48, max_w, bold=True, bold_stroke=1)
+    y = 640 if len(s4_intro) <= 2 else 610
     for line in s4_intro:
         draw_centered_text_with_shadow(c4, y, line, f_intro, COLOR_GRAY_WHITE, center_x_px=cx, bold_stroke=1)
         y += 92
 
-    draw_gold_rule(c4, 925, half_w_px=340, center_x_px=cx)
-    y_quote = 965
+    rule_top_y = max(865, y + 35)
+    draw_gold_rule(c4, rule_top_y, half_w_px=360, center_x_px=cx)
+    y_quote = rule_top_y + 45
     s4_quotes = [line.lstrip("　 ").replace("。」", "」") for line in episode["slide4"]["quote_lines"]]
-    f_quote = fit_uniform_font_to_width(s4_quotes, 72, 830, bold=True, bold_stroke=2)
+    f_quote = fit_uniform_font_to_width(s4_quotes, 74, 850, bold=True, bold_stroke=2)
     for clean_line in s4_quotes:
         draw_centered_text_with_shadow(
             c4, y_quote, clean_line, f_quote, COLOR_WHITE, center_x_px=cx, is_full_gold=True, bold_stroke=2
         )
-        y_quote += 118
-    draw_gold_rule(c4, y_quote + 25, half_w_px=340, center_x_px=cx)
-
-    save_note = episode["slide4"].get("save_note", "［ 辛い夜に見返せるよう【保存】してください ］")
-    f_save = fit_uniform_font_to_width([save_note], 42, max_w, bold=True, bold_stroke=1)
-    draw_centered_text_with_shadow(
-        c4, 1325, save_note, f_save, COLOR_WHITE, center_x_px=cx, gold_substring="【保存】", bold_stroke=1
-    )
+        y_quote += 124
+    draw_gold_rule(c4, y_quote + 28, half_w_px=360, center_x_px=cx)
 
     p4 = out_dir / "04.png"
-    img4 = finalize_slide_image(c4)
-    img4.save(p4, quality=98)
+    finalize_slide_image(c4).save(p4, quality=98)
     saved_paths.append(p4)
 
     # =========================================================================
-    # Slide 5: 保存用お守り ＋ 究極の2択
+    # Slide 5: 静かな問いかけ ＆ 究極の2択（業者感ゼロ・4〜5行のみ）
     # =========================================================================
     c5 = prepare_slide_background(base_bg_path, ep_id, 5)
-    draw_common_header(c5, cx)
-    badge5 = episode["slide5"].get("badge", "【 今夜のお守り ＆ 究極の2択 】")
-    draw_centered_text_with_shadow(c5, 565, badge5, font_badge, COLOR_GRAY_WHITE, center_x_px=cx, bold_stroke=1)
-    y = 665
+    draw_common_header(c5, ep_id, cx)
+    font_badge = load_mincho_font(42, bold=True)
+    draw_centered_text_with_shadow(
+        c5, 585, "【 西暦3000年・究極の選択 】", font_badge, COLOR_GRAY_WHITE, center_x_px=cx, bold_stroke=1
+    )
+    y = 695
     s5_lines = episode["slide5"]["lines"]
-    gold_kw5 = episode["slide5"].get("gold_keyword")
-    f_survey = fit_uniform_font_to_width(s5_lines, 52, max_w, bold=True, bold_stroke=1)
+    f_survey = fit_uniform_font_to_width(s5_lines, 56, max_w, bold=True, bold_stroke=1)
     for line in s5_lines:
         if not line.strip():
-            y += 38
+            y += 42
             continue
         is_choice = line.startswith("①") or line.startswith("②")
         draw_centered_text_with_shadow(
@@ -469,12 +452,10 @@ def render_episode(episode: dict, out_dir: Path, base_bg_path: Path | None = Non
             f_survey,
             COLOR_WHITE,
             center_x_px=cx,
-            gold_substring=gold_kw5,
             is_full_gold=is_choice,
             bold_stroke=1,
         )
-        y += 104
-    draw_centered_text_with_shadow(c5, 1360, "［ コメント欄で ① か ② を教えて → ］", font_cta, COLOR_RED, center_x_px=cx, bold_stroke=1)
+        y += 116
     p5 = out_dir / "05.png"
     finalize_slide_image(c5).save(p5, quality=98)
     saved_paths.append(p5)
@@ -495,13 +476,14 @@ def render_episode(episode: dict, out_dir: Path, base_bg_path: Path | None = Non
         im_rgb.save(jpg_path, format="JPEG", quality=96, subsampling=0)
         im_rgb.save(public_dir / f"0{i}.jpg", format="JPEG", quality=96, subsampling=0)
         im_rgb.save(public_dir / f"0{i}_v5.jpg", format="JPEG", quality=96, subsampling=0)
+        im_rgb.save(public_dir / f"0{i}_v8.jpg", format="JPEG", quality=96, subsampling=0)
 
     return saved_paths
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="1000年後の名言 スライド自動生成ツール (v7)")
-    parser.add_argument("--id", help="生成する記録番号（例: 010）", default=None)
+    parser = argparse.ArgumentParser(description="1000年後の名言 スライド自動生成ツール (v8)")
+    parser.add_argument("--id", help="生成する記録番号（例: 018）", default=None)
     parser.add_argument("--all", action="store_true", help="全エピソードを再生成")
     parser.add_argument("--guide", help="ガイド画像パスを重ねた確認画像も出力", default=None)
     args = parser.parse_args()

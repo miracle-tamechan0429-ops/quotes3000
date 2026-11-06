@@ -122,7 +122,7 @@ def refresh_access_token(creds: dict) -> str:
 
 def send_tiktok_draft(ep: dict, creds: dict) -> str:
     ep_id = ep["id"]
-    photo_urls = [f"{creds['image_base_url']}/{ep_id}/0{i}_v5.jpg" for i in range(1, 6)]
+    photo_urls = [f"{creds['image_base_url']}/{ep_id}/0{i}_v8.jpg" for i in range(1, 6)]
     payload = {
         "post_info": {
             "title": ep["tiktok"]["title"][:90],
