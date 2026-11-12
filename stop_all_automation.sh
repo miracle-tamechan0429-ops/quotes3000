@@ -17,9 +17,8 @@ if [ -d "$DST" ]; then
 fi
 
 cd "$SRC"
-git pull --rebase origin main || true
-git add .github/workflows/daily_tiktok_draft.yml stop_all_automation.sh
+git add -A
 git commit -m "Stop all scheduled automation for quotes3000" || true
-git push origin main || true
+git push -f origin main || true
 
 echo "All automation stopped cleanly."
